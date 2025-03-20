@@ -1,44 +1,80 @@
-const express = require('express');
-const { resolve } = require('path');
-const dotenv = require('dotenv');
-const connectDatabase = require('./database');
-const bodyParser = require('body-parser');
-const menu = require('./schema');
-const mongoose = require('mongoose');
-dotenv.config();
+const express = require("express");
+const mongoose = require("mongoose");
+require("dotenv").config();
 
-connectDatabase();
+const MenuItem = require("./schema.js");
 
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = 3000;
 
-app.use(express.static('static'));
-app.use(bodyParser.json());
+app.use(express.json());
 
-app.get('/', (req, res) => {
-  res.sendFile(resolve(__dirname, 'pages/index.html'));
-});
+mongoose.connect(process.env.MONGO_URI, { dbName: "restaurantDB" })
+  .then(() => console.log("Connected to MongoDB"))
+  .catch((error) => console.error("Error connecting to MongoDB:", error));
 
-app.get('/menu', async (req, res) => {
-  const menuItems = await menu.find({});
-  res.json(menuItems);
-});
-
-app.post('/menu', async (req, res) => {
+app.post("/menu", async (req, res) => {
   try {
-    const {name,price,description}=req.body;
-    if(!name || !price || !description){
-      res.status(400).json({"error":"Please provide all the details"});
-    }
-    const newMenuItem=new menu({name,price,description});
-    await newMenuItem.save();
-    res.status(201).json({"message":"Item added successfully"});
-    
-  } catch (error) {
-    res.status(500).json({ "error": "Internal Server Error" });
-  }
-})
+    const { name, description, price } = req.body;
 
-app.listen(port, () => {
-  console.log(`Example app listening at http://localhost:${port}`);
+    if (!name || price === undefined) {
+      return res.status(400).json({ error: "Name and price are required" });
+    }
+
+    const newMenuItem = await MenuItem.create({ name, description, price });
+    res.status(201).json(newMenuItem);
+  } catch (error) {
+    res.status(500).json({ error: "Error creating menu item" });
+  }
+});
+
+app.get("/menu", async (req, res) => {
+  try {
+    const menuItems = await MenuItem.find();
+    res.status(200).json(menuItems);
+  } catch (error) {
+    res.status(500).json({ error: "Error fetching menu items" });
+  }
+});
+
+app.put("/menu/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, price } = req.body;
+
+    const updatedMenuItem = await MenuItem.findByIdAndUpdate(
+      id,
+      { name, description, price },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedMenuItem) {
+      return res.status(404).json({ error: "Menu item not found" });
+    }
+
+    res.status(200).json(updatedMenuItem);
+  } catch (error) {
+    res.status(500).json({ error: "Error updating menu item" });
+  }
+});
+
+app.delete("/menu/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const deletedMenuItem = await MenuItem.findByIdAndDelete(id);
+
+    if (!deletedMenuItem) {
+      return res.status(404).json({ error: "Menu item not found" });
+    }
+
+    res.status(200).json({ message: "Menu item deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ error: "Error deleting menu item" });
+  }
+});
+
+// Start the server
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
 });
